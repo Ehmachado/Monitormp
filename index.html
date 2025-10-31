@@ -1187,8 +1187,18 @@ Exemplos de formatos aceitos:
                 });
             });
 
+            // Pegar propostas do arquivo mais recente
+            const latestFile = filesData[filesData.length - 1];
+            const latestFilePropostas = new Set(latestFile.data.map(row => row['Nº Prop']));
+
             // Agora construir o histórico de mudanças
             Object.entries(propByFile).forEach(([propNum, occurrences]) => {
+                // REGRA: Se a proposta não existe na planilha mais recente, não incluir no histórico
+                if (!latestFilePropostas.has(propNum)) {
+                    console.log(`Proposta ${propNum} removida - não existe na planilha mais recente`);
+                    return; // Pular esta proposta
+                }
+
                 // Ordenar por data do arquivo
                 occurrences.sort((a, b) => a.fileDate - b.fileDate);
                 
@@ -1227,6 +1237,9 @@ Exemplos de formatos aceitos:
                     allOccurrences: occurrences // Guardar todas as ocorrências
                 };
             });
+
+            console.log(`Total de propostas no histórico: ${Object.keys(statusHistory).length}`);
+            console.log(`Propostas na planilha mais recente: ${latestFilePropostas.size}`);
 
             updateFilesList();
         }
