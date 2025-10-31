@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Propostas - BB Regulariza</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border: 2px dashed #667eea;
+        }
+
+        .upload-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 12px 25px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .alert {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .warning {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left-color: #28a745;
+        }
+
+        .filter-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        select, input[type="text"] {
+            padding: 8px 12px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 0.95em;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .badge-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .files-list {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .export-btn {
+            background: #28a745;
+            margin-top: 15px;
+        }
+
+        .table-container {
+            max-height: 600px;
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            color: #667eea;
+        }
+
+        .status-history {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Monitor de Propostas BB Regulariza</h1>
+            <p class="subtitle">Acompanhamento de mudanças de status e análise por agência</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="upload-area">
+                <h3>📁 Upload de Planilhas</h3>
+                <input type="file" id="fileInput" accept=".csv" multiple>
+                <button id="processBtn" onclick="processFiles()">Processar Arquivos</button>
+                <div id="filesList" class="files-list" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <div id="statsSection" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total de Propostas</h3>
+                    <div class="value" id="totalPropostas">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Mudanças de Status</h3>
+                    <div class="value" id="totalMudancas">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Paradas > 3 dias</h3>
+                    <div class="value" id="totalParadas">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Agências Ativas</h3>
+                    <div class="value" id="totalAgencias">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mainContent" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('mudancas')">🔄 Mudanças de Status</button>
+                <button class="tab" onclick="switchTab('paradas')">⏱️ Propostas Paradas</button>
+                <button class="tab" onclick="switchTab('agencias')">🏢 Análise por Agência</button>
+                <button class="tab" onclick="switchTab('historico')">📋 Histórico Completo</button>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label>Filtrar por Agência (Pref):</label>
+                    <select id="filterAgencia" onchange="applyFilters()">
+                        <option value="">Todas</option>
+                    </select>
+                    <label>Situação:</label>
+                    <select id="filterSituacao" onchange="applyFilters()">
+                        <option value="">Todas</option>
+                    </select>
+                    <button onclick="clearFilters()">Limpar Filtros</button>
+                    <button class="export-btn" onclick="exportCurrentView()">📥 Exportar CSV</button>
+                </div>
+            </div>
+
+            <div id="mudancas" class="tab-content active">
+                <h2>Mudanças de Status Detectadas</h2>
+                <div class="table-container">
+                    <table id="mudancasTable">
+                        <thead>
+                            <tr>
+                                <th>Nº Proposta</th>
+                                <th>Prefixo</th>
+                                <th>MCI</th>
+                                <th>Status Anterior</th>
+                                <th>Status Atual</th>
+                                <th>Data Mudança</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="paradas" class="tab-content">
+                <h2>Propostas Paradas há mais de 3 dias</h2>
+                <div class="table-container">
+                    <table id="paradasTable">
+                        <thead>
+                            <tr>
+                                <th>Nº Proposta</th>
+                                <th>Prefixo</th>
+                                <th>MCI</th>
+                                <th>Situação</th>
+                                <th>Data Proposta</th>
+                                <th>Dias Parada</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="agencias" class="tab-content">
+                <h2>Análise por Agência</h2>
+                <div class="chart-container">
+                    <canvas id="agenciasChart"></canvas>
+                </div>
+                <div class="table-container">
+                    <table id="agenciasTable">
+                        <thead>
+                            <tr>
+                                <th>Prefixo</th>
+                                <th>Total Propostas</th>
+                                <th>Valor Total</th>
+                                <th>Em Análise</th>
+                                <th>Paradas > 3 dias</th>
+                                <th>Taxa Conversão</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="historico" class="tab-content">
+                <h2>Histórico Completo de Propostas</h2>
+                <div class="table-container">
+                    <table id="historicoTable">
+                        <thead>
+                            <tr>
+                                <th>Nº Proposta</th>
+                                <th>Prefixo</th>
+                                <th>MCI</th>
+                                <th>Situação Atual</th>
+                                <th>Histórico de Status</th>
+                                <th>Data Proposta</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filesData = [];
+        let statusHistory = {};
+        let currentFilter = { agencia: '', situacao: '' };
+
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert ${type}`;
+            alert.textContent = message;
+            container.appendChild(alert);
+            setTimeout(() => alert.remove(), 5000);
+        }
+
+        async function processFiles() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+
+            if (files.length === 0) {
+                showAlert('Por favor, selecione pelo menos um arquivo CSV', 'warning');
+                return;
+            }
+
+            document.getElementById('processBtn').disabled = true;
+            showAlert('Processando arquivos...', 'info');
+
+            filesData = [];
+
+            for (let file of files) {
+                await processFile(file);
+            }
+
+            analyzeData();
+            updateUI();
+            
+            document.getElementById('statsSection').style.display = 'block';
+            document.getElementById('mainContent').style.display = 'block';
+            document.getElementById('processBtn').disabled = false;
+            
+            showAlert(`${files.length} arquivo(s) processado(s) com sucesso!`, 'success');
+        }
+
+        function processFile(file) {
+            return new Promise((resolve) => {
+                const fileDate = new Date(file.lastModified);
+                
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        const data = results.data.filter(row => row['Nº Prop'] && row['Nº Prop'] !== 'Nº Prop');
+                        
+                        data.forEach(row => {
+                            row._fileDate = fileDate;
+                            row._fileName = file.name;
+                        });
+
+                        filesData.push({
+                            name: file.name,
+                            date: fileDate,
+                            data: data
+                        });
+
+                        resolve();
+                    },
+                    error: function(error) {
+                        console.error('Erro ao processar arquivo:', error);
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        function analyzeData() {
+            // Ordenar arquivos por data
+            filesData.sort((a, b) => a.date - b.date);
+
+            // Combinar todos os dados
+            allData = [];
+            filesData.forEach(file => {
+                allData = allData.concat(file.data);
+            });
+
+            // Analisar mudanças de status
+            statusHistory = {};
+            
+            filesData.forEach((file, fileIndex) => {
+                file.data.forEach(row => {
+                    const propNum = row['Nº Prop'];
+                    const situacao = row['Situação'];
+                    const pref = row['Pref'];
+                    
+                    if (!statusHistory[propNum]) {
+                        statusHistory[propNum] = {
+                            changes: [],
+                            current: situacao,
+                            pref: pref,
+                            mci: row['MCI'],
+                            valor: row['Valor'],
+                            dtProp: row['Dt Prop']
+                        };
+                    }
+
+                    // Verificar se houve mudança de status
+                    if (statusHistory[propNum].changes.length === 0) {
+                        statusHistory[propNum].changes.push({
+                            status: situacao,
+                            date: file.date,
+                            fileName: file.name
+                        });
+                    } else {
+                        const lastStatus = statusHistory[propNum].changes[statusHistory[propNum].changes.length - 1].status;
+                        if (lastStatus !== situacao) {
+                            statusHistory[propNum].changes.push({
+                                status: situacao,
+                                date: file.date,
+                                fileName: file.name,
+                                previousStatus: lastStatus
+                            });
+                        }
+                    }
+
+                    statusHistory[propNum].current = situacao;
+                });
+            });
+
+            updateFilesList();
+        }
+
+        function updateFilesList() {
+            const filesList = document.getElementById('filesList');
+            filesList.style.display = 'block';
+            filesList.innerHTML = '<h4>Arquivos Processados:</h4>';
+            
+            filesData.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `
+                    <span>${file.name}</span>
+                    <span>${formatDate(file.date)} - ${file.data.length} registros</span>
+                `;
+                filesList.appendChild(item);
+            });
+        }
+
+        function updateUI() {
+            updateStats();
+            updateMudancasTable();
+            updateParadasTable();
+            updateAgenciasAnalysis();
+            updateHistoricoTable();
+            updateFilters();
+        }
+
+        function updateStats() {
+            const totalPropostas = Object.keys(statusHistory).length;
+            let totalMudancas = 0;
+            
+            Object.values(statusHistory).forEach(prop => {
+                totalMudancas += Math.max(0, prop.changes.length - 1);
+            });
+
+            const paradasData = getParadasData();
+            const agencias = new Set(allData.map(row => row['Pref']).filter(p => p));
+
+            document.getElementById('totalPropostas').textContent = totalPropostas;
+            document.getElementById('totalMudancas').textContent = totalMudancas;
+            document.getElementById('totalParadas').textContent = paradasData.length;
+            document.getElementById('totalAgencias').textContent = agencias.size;
+        }
+
+        function updateMudancasTable() {
+            const tbody = document.querySelector('#mudancasTable tbody');
+            tbody.innerHTML = '';
+
+            const mudancas = [];
+            Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                prop.changes.forEach((change, idx) => {
+                    if (change.previousStatus) {
+                        mudancas.push({
+                            propNum,
+                            ...prop,
+                            ...change
+                        });
+                    }
+                });
+            });
+
+            mudancas.sort((a, b) => b.date - a.date);
+
+            mudancas.forEach(m => {
+                if (matchesFilter(m.pref, m.status)) {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td>${m.propNum}</td>
+                        <td>${m.pref || '-'}</td>
+                        <td>${m.mci || '-'}</td>
+                        <td><span class="badge badge-info">${m.previousStatus}</span></td>
+                        <td><span class="badge badge-success">${m.status}</span></td>
+                        <td>${formatDate(m.date)}</td>
+                        <td>${formatCurrency(m.valor)}</td>
+                    `;
+                }
+            });
+        }
+
+        function getParadasData() {
+            const today = new Date();
+            const threeDaysAgo = new Date(today.getTime() - (3 * 24 * 60 * 60 * 1000));
+            const paradas = [];
+
+            Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                const lastChange = prop.changes[prop.changes.length - 1];
+                const daysStopped = Math.floor((today - lastChange.date) / (1000 * 60 * 60 * 24));
+
+                if (daysStopped > 3) {
+                    paradas.push({
+                        propNum,
+                        ...prop,
+                        lastChangeDate: lastChange.date,
+                        daysStopped
+                    });
+                }
+            });
+
+            return paradas;
+        }
+
+        function updateParadasTable() {
+            const tbody = document.querySelector('#paradasTable tbody');
+            tbody.innerHTML = '';
+
+            const paradas = getParadasData();
+            paradas.sort((a, b) => b.daysStopped - a.daysStopped);
+
+            paradas.forEach(p => {
+                if (matchesFilter(p.pref, p.current)) {
+                    const row = tbody.insertRow();
+                    const badgeClass = p.daysStopped > 7 ? 'badge-danger' : 'badge-warning';
+                    row.innerHTML = `
+                        <td>${p.propNum}</td>
+                        <td>${p.pref || '-'}</td>
+                        <td>${p.mci || '-'}</td>
+                        <td><span class="badge badge-info">${p.current}</span></td>
+                        <td>${p.dtProp || '-'}</td>
+                        <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span></td>
+                        <td>${formatCurrency(p.valor)}</td>
+                    `;
+                }
+            });
+        }
+
+        function updateAgenciasAnalysis() {
+            const agenciasStats = {};
+
+            Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                const pref = prop.pref || 'Sem Prefixo';
+                
+                if (!agenciasStats[pref]) {
+                    agenciasStats[pref] = {
+                        total: 0,
+                        valorTotal: 0,
+                        emAnalise: 0,
+                        paradas: 0,
+                        finalizadas: 0
+                    };
+                }
+
+                agenciasStats[pref].total++;
+                agenciasStats[pref].valorTotal += parseFloat(prop.valor?.replace(',', '.') || 0);
+
+                if (prop.current && prop.current.includes('ANALISADA')) {
+                    agenciasStats[pref].emAnalise++;
+                }
+
+                if (prop.current && (prop.current.includes('FORMALIZADA') || prop.current.includes('LIBERADA'))) {
+                    agenciasStats[pref].finalizadas++;
+                }
+
+                const paradas = getParadasData();
+                if (paradas.find(p => p.propNum === propNum)) {
+                    agenciasStats[pref].paradas++;
+                }
+            });
+
+            // Atualizar tabela
+            const tbody = document.querySelector('#agenciasTable tbody');
+            tbody.innerHTML = '';
+
+            Object.entries(agenciasStats)
+                .sort((a, b) => b[1].total - a[1].total)
+                .forEach(([pref, stats]) => {
+                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                        const taxaConversao = ((stats.finalizadas / stats.total) * 100).toFixed(1);
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td><strong>${pref}</strong></td>
+                            <td>${stats.total}</td>
+                            <td>${formatCurrency(stats.valorTotal)}</td>
+                            <td>${stats.emAnalise}</td>
+                            <td>${stats.paradas}</td>
+                            <td><span class="badge badge-success">${taxaConversao}%</span></td>
+                        `;
+                    }
+                });
+
+            // Atualizar gráfico
+            updateAgenciasChart(agenciasStats);
+        }
+
+        function updateAgenciasChart(agenciasStats) {
+            const ctx = document.getElementById('agenciasChart');
+            
+            if (window.agenciasChart) {
+                window.agenciasChart.destroy();
+            }
+
+            const topAgencias = Object.entries(agenciasStats)
+                .sort((a, b) => b[1].total - a[1].total)
+                .slice(0, 10);
+
+            window.agenciasChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: topAgencias.map(([pref]) => `Pref ${pref}`),
+                    datasets: [{
+                        label: 'Total de Propostas',
+                        data: topAgencias.map(([, stats]) => stats.total),
+                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2
+                    }, {
+                        label: 'Paradas > 3 dias',
+                        data: topAgencias.map(([, stats]) => stats.paradas),
+                        backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                        borderColor: 'rgba(255, 193, 7, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Top 10 Agências por Volume'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateHistoricoTable() {
+            const tbody = document.querySelector('#historicoTable tbody');
+            tbody.innerHTML = '';
+
+            Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                if (matchesFilter(prop.pref, prop.current)) {
+                    const row = tbody.insertRow();
+                    const historicoHTML = prop.changes.map((c, idx) => {
+                        return `<div>${formatDate(c.date)}: ${c.status}</div>`;
+                    }).join('');
+
+                    row.innerHTML = `
+                        <td>${propNum}</td>
+                        <td>${prop.pref || '-'}</td>
+                        <td>${prop.mci || '-'}</td>
+                        <td><span class="badge badge-info">${prop.current}</span></td>
+                        <td><div class="status-history">${historicoHTML}</div></td>
+                        <td>${prop.dtProp || '-'}</td>
+                        <td>${formatCurrency(prop.valor)}</td>
+                    `;
+                }
+            });
+        }
+
+        function updateFilters() {
+            const agencias = new Set(allData.map(row => row['Pref']).filter(p => p));
+            const situacoes = new Set(allData.map(row => row['Situação']).filter(s => s));
+
+            const agenciaSelect = document.getElementById('filterAgencia');
+            const situacaoSelect = document.getElementById('filterSituacao');
+
+            agenciaSelect.innerHTML = '<option value="">Todas</option>';
+            Array.from(agencias).sort().forEach(ag => {
+                agenciaSelect.innerHTML += `<option value="${ag}">${ag}</option>`;
+            });
+
+            situacaoSelect.innerHTML = '<option value="">Todas</option>';
+            Array.from(situacoes).sort().forEach(sit => {
+                situacaoSelect.innerHTML += `<option value="${sit}">${sit}</option>`;
+            });
+        }
+
+        function matchesFilter(pref, situacao) {
+            if (currentFilter.agencia && pref !== currentFilter.agencia) return false;
+            if (currentFilter.situacao && situacao !== currentFilter.situacao) return false;
+            return true;
+        }
+
+        function applyFilters() {
+            currentFilter.agencia = document.getElementById('filterAgencia').value;
+            currentFilter.situacao = document.getElementById('filterSituacao').value;
+            updateUI();
+        }
+
+        function clearFilters() {
+            document.getElementById('filterAgencia').value = '';
+            document.getElementById('filterSituacao').value = '';
+            currentFilter = { agencia: '', situacao: '' };
+            updateUI();
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        function exportCurrentView() {
+            const activeTab = document.querySelector('.tab-content.active');
+            const table = activeTab.querySelector('table');
+            
+            if (!table) return;
+
+            let csv = [];
+            const rows = table.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const cols = row.querySelectorAll('td, th');
+                const rowData = [];
+                cols.forEach(col => rowData.push('"' + col.textContent.trim() + '"'));
+                csv.push(rowData.join(','));
+            });
+
+            const csvContent = csv.join('\n');
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            const tabTitle = activeTab.querySelector('h2').textContent;
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${tabTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showAlert('CSV exportado com sucesso!', 'success');
+        }
+
+        function formatDate(date) {
+            if (typeof date === 'string') return date;
+            return date.toLocaleDateString('pt-BR');
+        }
+
+        function formatCurrency(value) {
+            if (!value) return 'R$ 0,00';
+            const num = parseFloat(value.toString().replace(',', '.'));
+            return new Intl.NumberFormat('pt-BR', { 
+                style: 'currency', 
+                currency: 'BRL' 
+            }).format(num);
+        }
+    </script>
+</body>
+</html>
