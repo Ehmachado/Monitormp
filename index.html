@@ -765,9 +765,23 @@ Exemplos de formatos aceitos:
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('filesList').style.display = 'none';
 
-            // Limpar gráfico se existir
-            if (window.agenciasChart) {
-                window.agenciasChart.destroy();
+            // Limpar gráficos se existirem
+            try {
+                if (window.agenciasChart && typeof window.agenciasChart.destroy === 'function') {
+                    window.agenciasChart.destroy();
+                    window.agenciasChart = null;
+                }
+            } catch (e) {
+                console.log('Erro ao destruir agenciasChart:', e);
+            }
+
+            try {
+                if (window.statusPorAgenciaChart && typeof window.statusPorAgenciaChart.destroy === 'function') {
+                    window.statusPorAgenciaChart.destroy();
+                    window.statusPorAgenciaChart = null;
+                }
+            } catch (e) {
+                console.log('Erro ao destruir statusPorAgenciaChart:', e);
             }
 
             showAlert('🗑️ Todos os dados foram limpos!', 'success');
@@ -1572,129 +1586,165 @@ Exemplos de formatos aceitos:
         function updateStatusPorAgenciaChart(agenciasStats) {
             const ctx = document.getElementById('statusPorAgenciaChart');
             
-            if (window.statusPorAgenciaChart) {
-                window.statusPorAgenciaChart.destroy();
+            if (!ctx) {
+                console.error('Canvas statusPorAgenciaChart não encontrado');
+                return;
+            }
+
+            try {
+                if (window.statusPorAgenciaChart && typeof window.statusPorAgenciaChart.destroy === 'function') {
+                    window.statusPorAgenciaChart.destroy();
+                }
+            } catch (e) {
+                console.log('Erro ao destruir gráfico anterior:', e);
             }
 
             const topAgencias = Object.entries(agenciasStats)
                 .sort((a, b) => b[1].total - a[1].total)
                 .slice(0, 10);
 
-            window.statusPorAgenciaChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: topAgencias.map(([pref]) => getAgenciaNome(pref)),
-                    datasets: [
-                        {
-                            label: 'Acolhimento',
-                            data: topAgencias.map(([, stats]) => stats.acolhimento),
-                            backgroundColor: 'rgba(255, 193, 7, 0.7)',
-                            borderColor: 'rgba(255, 193, 7, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Em Análise',
-                            data: topAgencias.map(([, stats]) => stats.analisada),
-                            backgroundColor: 'rgba(23, 162, 184, 0.7)',
-                            borderColor: 'rgba(23, 162, 184, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Despachadas',
-                            data: topAgencias.map(([, stats]) => stats.despachada + stats.despacho),
-                            backgroundColor: 'rgba(102, 126, 234, 0.7)',
-                            borderColor: 'rgba(102, 126, 234, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Formalizadas',
-                            data: topAgencias.map(([, stats]) => stats.formalizada),
-                            backgroundColor: 'rgba(40, 167, 69, 0.7)',
-                            borderColor: 'rgba(40, 167, 69, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Paradas > 3 dias',
-                            data: topAgencias.map(([, stats]) => stats.paradas),
-                            backgroundColor: 'rgba(220, 53, 69, 0.7)',
-                            borderColor: 'rgba(220, 53, 69, 1)',
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Distribuição de Status por Agência (Top 10)'
-                        }
+            if (topAgencias.length === 0) {
+                console.log('Nenhuma agência para exibir no gráfico de status');
+                return;
+            }
+
+            try {
+                window.statusPorAgenciaChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: topAgencias.map(([pref]) => getAgenciaNome(pref)),
+                        datasets: [
+                            {
+                                label: 'Acolhimento',
+                                data: topAgencias.map(([, stats]) => stats.acolhimento),
+                                backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                                borderColor: 'rgba(255, 193, 7, 1)',
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'Em Análise',
+                                data: topAgencias.map(([, stats]) => stats.analisada),
+                                backgroundColor: 'rgba(23, 162, 184, 0.7)',
+                                borderColor: 'rgba(23, 162, 184, 1)',
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'Despachadas',
+                                data: topAgencias.map(([, stats]) => stats.despachada + stats.despacho),
+                                backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                                borderColor: 'rgba(102, 126, 234, 1)',
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'Formalizadas',
+                                data: topAgencias.map(([, stats]) => stats.formalizada),
+                                backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                                borderColor: 'rgba(40, 167, 69, 1)',
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'Paradas > 3 dias',
+                                data: topAgencias.map(([, stats]) => stats.paradas),
+                                backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                                borderColor: 'rgba(220, 53, 69, 1)',
+                                borderWidth: 2
+                            }
+                        ]
                     },
-                    scales: {
-                        x: {
-                            stacked: true,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Distribuição de Status por Agência (Top 10)'
+                            }
                         },
-                        y: {
-                            stacked: true,
-                            beginAtZero: true
+                        scales: {
+                            x: {
+                                stacked: true,
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true
+                            }
                         }
                     }
-                }
-            });
+                });
+            } catch (e) {
+                console.error('Erro ao criar gráfico statusPorAgenciaChart:', e);
+            }
         }
 
         function updateAgenciasChart(agenciasStats) {
             const ctx = document.getElementById('agenciasChart');
             
-            if (window.agenciasChart) {
-                window.agenciasChart.destroy();
+            if (!ctx) {
+                console.error('Canvas agenciasChart não encontrado');
+                return;
+            }
+
+            try {
+                if (window.agenciasChart && typeof window.agenciasChart.destroy === 'function') {
+                    window.agenciasChart.destroy();
+                }
+            } catch (e) {
+                console.log('Erro ao destruir gráfico anterior:', e);
             }
 
             const topAgencias = Object.entries(agenciasStats)
                 .sort((a, b) => b[1].total - a[1].total)
                 .slice(0, 10);
 
-            window.agenciasChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: topAgencias.map(([pref]) => getAgenciaNome(pref)),
-                    datasets: [{
-                        label: 'Total de Propostas',
-                        data: topAgencias.map(([, stats]) => stats.total),
-                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
-                        borderColor: 'rgba(102, 126, 234, 1)',
-                        borderWidth: 2
-                    }, {
-                        label: 'Paradas > 3 dias',
-                        data: topAgencias.map(([, stats]) => stats.paradas),
-                        backgroundColor: 'rgba(255, 193, 7, 0.7)',
-                        borderColor: 'rgba(255, 193, 7, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Top 10 Agências por Volume'
-                        }
+            if (topAgencias.length === 0) {
+                console.log('Nenhuma agência para exibir no gráfico');
+                return;
+            }
+
+            try {
+                window.agenciasChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: topAgencias.map(([pref]) => getAgenciaNome(pref)),
+                        datasets: [{
+                            label: 'Total de Propostas',
+                            data: topAgencias.map(([, stats]) => stats.total),
+                            backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                            borderColor: 'rgba(102, 126, 234, 1)',
+                            borderWidth: 2
+                        }, {
+                            label: 'Paradas > 3 dias',
+                            data: topAgencias.map(([, stats]) => stats.paradas),
+                            backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                            borderColor: 'rgba(255, 193, 7, 1)',
+                            borderWidth: 2
+                        }]
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: true
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Top 10 Agências por Volume'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
                         }
                     }
-                }
-            });
+                });
+            } catch (e) {
+                console.error('Erro ao criar gráfico agenciasChart:', e);
+            }
         }
 
         function updateHistoricoTable() {
