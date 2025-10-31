@@ -398,6 +398,52 @@
             color: #17a2b8;
         }
 
+        .status-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .status-card h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .status-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-item .status-name {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .status-item .status-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .status-item .status-percent {
+            font-size: 0.9em;
+            color: #999;
+            margin-top: 5px;
+        }
+
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: 1fr;
@@ -542,9 +588,18 @@ Exemplos de formatos aceitos:
 
             <div id="agencias" class="tab-content">
                 <h2>Análise por Agência</h2>
+                
                 <div class="chart-container">
+                    <h3 style="margin-bottom: 15px;">📊 Top 10 Agências por Volume</h3>
                     <canvas id="agenciasChart"></canvas>
                 </div>
+
+                <div class="chart-container">
+                    <h3 style="margin-bottom: 15px;">📈 Distribuição de Status por Agência</h3>
+                    <canvas id="statusPorAgenciaChart"></canvas>
+                </div>
+
+                <h3 style="margin: 30px 0 15px 0;">📋 Detalhamento Completo por Agência</h3>
                 <div class="table-container">
                     <table id="agenciasTable">
                         <thead>
@@ -553,14 +608,38 @@ Exemplos de formatos aceitos:
                                 <th>Prefixo</th>
                                 <th>Total Propostas</th>
                                 <th>Valor Total</th>
+                                <th>Em Acolhimento</th>
                                 <th>Em Análise</th>
+                                <th>Despachadas</th>
+                                <th>Formalizadas</th>
                                 <th>Paradas > 3 dias</th>
-                                <th>Taxa Conversão</th>
+                                <th>Taxa Evolução</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
                 </div>
+
+                <h3 style="margin: 30px 0 15px 0;">⚠️ Propostas Paradas por Agência</h3>
+                <div class="table-container">
+                    <table id="paradasPorAgenciaTable">
+                        <thead>
+                            <tr>
+                                <th>Agência</th>
+                                <th>Prefixo</th>
+                                <th>Total Paradas</th>
+                                <th>Paradas 3-7 dias</th>
+                                <th>Paradas > 7 dias</th>
+                                <th>Valor Total Parado</th>
+                                <th>% do Total</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h3 style="margin: 30px 0 15px 0;">📊 Status Atual por Agência</h3>
+                <div id="statusPorAgenciaDetalhado"></div>
             </div>
 
             <div id="historico" class="tab-content">
@@ -1304,7 +1383,9 @@ Exemplos de formatos aceitos:
 
         function updateAgenciasAnalysis() {
             const agenciasStats = {};
+            const paradasData = getParadasData();
 
+            // Construir estatísticas por agência
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 const pref = prop.pref || 'Sem Prefixo';
                 
@@ -1312,9 +1393,17 @@ Exemplos de formatos aceitos:
                     agenciasStats[pref] = {
                         total: 0,
                         valorTotal: 0,
-                        emAnalise: 0,
+                        acolhimento: 0,
+                        acolhida: 0,
+                        analisada: 0,
+                        despachada: 0,
+                        despacho: 0,
+                        formalizada: 0,
                         paradas: 0,
-                        finalizadas: 0
+                        paradasValor: 0,
+                        paradas3_7: 0,
+                        paradasMais7: 0,
+                        statusCount: {}
                     };
                 }
 
@@ -1332,21 +1421,54 @@ Exemplos de formatos aceitos:
                 }
                 agenciasStats[pref].valorTotal += valorNum;
 
-                if (prop.current && prop.current.includes('ANALISADA')) {
-                    agenciasStats[pref].emAnalise++;
+                // Contar por status atual
+                const status = prop.current || 'Sem Status';
+                agenciasStats[pref].statusCount[status] = (agenciasStats[pref].statusCount[status] || 0) + 1;
+
+                // Classificar por tipo de status
+                if (status.includes('ACOLHIMENTO')) {
+                    agenciasStats[pref].acolhimento++;
+                } else if (status.includes('ACOLHIDA')) {
+                    agenciasStats[pref].acolhida++;
+                } else if (status.includes('ANALISADA')) {
+                    agenciasStats[pref].analisada++;
+                } else if (status.includes('DESPACHADA')) {
+                    agenciasStats[pref].despachada++;
+                } else if (status.includes('DESPACHO')) {
+                    agenciasStats[pref].despacho++;
+                } else if (status.includes('FORMALIZADA') || status.includes('LIBERADA')) {
+                    agenciasStats[pref].formalizada++;
                 }
 
-                if (prop.current && (prop.current.includes('FORMALIZADA') || prop.current.includes('LIBERADA'))) {
-                    agenciasStats[pref].finalizadas++;
-                }
-
-                const paradas = getParadasData();
-                if (paradas.find(p => p.propNum === propNum)) {
+                // Verificar se está parada
+                const parada = paradasData.find(p => p.propNum === propNum);
+                if (parada) {
                     agenciasStats[pref].paradas++;
+                    agenciasStats[pref].paradasValor += valorNum;
+                    
+                    if (parada.daysStopped <= 7) {
+                        agenciasStats[pref].paradas3_7++;
+                    } else {
+                        agenciasStats[pref].paradasMais7++;
+                    }
                 }
             });
 
-            // Atualizar tabela
+            // Atualizar tabela principal
+            updateAgenciasMainTable(agenciasStats);
+            
+            // Atualizar tabela de propostas paradas
+            updateParadasPorAgenciaTable(agenciasStats);
+            
+            // Atualizar seção de status detalhado
+            updateStatusPorAgenciaDetalhado(agenciasStats);
+            
+            // Atualizar gráficos
+            updateAgenciasChart(agenciasStats);
+            updateStatusPorAgenciaChart(agenciasStats);
+        }
+
+        function updateAgenciasMainTable(agenciasStats) {
             const tbody = document.querySelector('#agenciasTable tbody');
             tbody.innerHTML = '';
 
@@ -1354,22 +1476,175 @@ Exemplos de formatos aceitos:
                 .sort((a, b) => b[1].total - a[1].total)
                 .forEach(([pref, stats]) => {
                     if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
-                        const taxaConversao = ((stats.finalizadas / stats.total) * 100).toFixed(1);
+                        const taxaEvolucao = stats.total > 0 ? 
+                            (((stats.analisada + stats.despachada + stats.despacho + stats.formalizada) / stats.total) * 100).toFixed(1) : 
+                            '0.0';
+                        
                         const row = tbody.insertRow();
                         row.innerHTML = `
                             <td><strong>${getAgenciaNome(pref)}</strong></td>
                             <td>${pref}</td>
-                            <td>${stats.total}</td>
+                            <td><strong>${stats.total}</strong></td>
                             <td>${formatCurrency(stats.valorTotal)}</td>
-                            <td>${stats.emAnalise}</td>
-                            <td>${stats.paradas}</td>
-                            <td><span class="badge badge-success">${taxaConversao}%</span></td>
+                            <td>${stats.acolhimento}</td>
+                            <td>${stats.analisada}</td>
+                            <td>${stats.despachada + stats.despacho}</td>
+                            <td><span class="badge badge-success">${stats.formalizada}</span></td>
+                            <td><span class="badge ${stats.paradas > 5 ? 'badge-danger' : 'badge-warning'}">${stats.paradas}</span></td>
+                            <td><span class="badge badge-info">${taxaEvolucao}%</span></td>
+                        `;
+                    }
+                });
+        }
+
+        function updateParadasPorAgenciaTable(agenciasStats) {
+            const tbody = document.querySelector('#paradasPorAgenciaTable tbody');
+            tbody.innerHTML = '';
+
+            Object.entries(agenciasStats)
+                .filter(([pref, stats]) => stats.paradas > 0)
+                .sort((a, b) => b[1].paradas - a[1].paradas)
+                .forEach(([pref, stats]) => {
+                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                        const percentParadas = ((stats.paradas / stats.total) * 100).toFixed(1);
+                        
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td><strong>${getAgenciaNome(pref)}</strong></td>
+                            <td>${pref}</td>
+                            <td><span class="badge badge-danger">${stats.paradas}</span></td>
+                            <td><span class="badge badge-warning">${stats.paradas3_7}</span></td>
+                            <td><span class="badge badge-danger">${stats.paradasMais7}</span></td>
+                            <td>${formatCurrency(stats.paradasValor)}</td>
+                            <td><strong>${percentParadas}%</strong></td>
                         `;
                     }
                 });
 
-            // Atualizar gráfico
-            updateAgenciasChart(agenciasStats);
+            if (tbody.rows.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="7" style="text-align: center; padding: 30px; color: #28a745;">🎉 Nenhuma proposta parada por mais de 3 dias!</td>';
+            }
+        }
+
+        function updateStatusPorAgenciaDetalhado(agenciasStats) {
+            const container = document.getElementById('statusPorAgenciaDetalhado');
+            container.innerHTML = '';
+
+            Object.entries(agenciasStats)
+                .sort((a, b) => b[1].total - a[1].total)
+                .slice(0, 10) // Top 10 agências
+                .forEach(([pref, stats]) => {
+                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                        const card = document.createElement('div');
+                        card.className = 'status-card';
+                        
+                        let statusHTML = '<div class="status-grid">';
+                        Object.entries(stats.statusCount)
+                            .sort((a, b) => b[1] - a[1])
+                            .forEach(([status, count]) => {
+                                const percent = ((count / stats.total) * 100).toFixed(1);
+                                statusHTML += `
+                                    <div class="status-item">
+                                        <div class="status-name">${status}</div>
+                                        <div class="status-value">${count}</div>
+                                        <div class="status-percent">${percent}%</div>
+                                    </div>
+                                `;
+                            });
+                        statusHTML += '</div>';
+
+                        card.innerHTML = `
+                            <h4>${getAgenciaNome(pref)} (Pref ${pref})</h4>
+                            <div style="margin-bottom: 15px;">
+                                <strong>Total:</strong> ${stats.total} propostas | 
+                                <strong>Valor:</strong> ${formatCurrency(stats.valorTotal)} | 
+                                <strong>Paradas:</strong> <span class="badge ${stats.paradas > 5 ? 'badge-danger' : 'badge-warning'}">${stats.paradas}</span>
+                            </div>
+                            ${statusHTML}
+                        `;
+                        
+                        container.appendChild(card);
+                    }
+                });
+        }
+
+        function updateStatusPorAgenciaChart(agenciasStats) {
+            const ctx = document.getElementById('statusPorAgenciaChart');
+            
+            if (window.statusPorAgenciaChart) {
+                window.statusPorAgenciaChart.destroy();
+            }
+
+            const topAgencias = Object.entries(agenciasStats)
+                .sort((a, b) => b[1].total - a[1].total)
+                .slice(0, 10);
+
+            window.statusPorAgenciaChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: topAgencias.map(([pref]) => getAgenciaNome(pref)),
+                    datasets: [
+                        {
+                            label: 'Acolhimento',
+                            data: topAgencias.map(([, stats]) => stats.acolhimento),
+                            backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                            borderColor: 'rgba(255, 193, 7, 1)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Em Análise',
+                            data: topAgencias.map(([, stats]) => stats.analisada),
+                            backgroundColor: 'rgba(23, 162, 184, 0.7)',
+                            borderColor: 'rgba(23, 162, 184, 1)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Despachadas',
+                            data: topAgencias.map(([, stats]) => stats.despachada + stats.despacho),
+                            backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                            borderColor: 'rgba(102, 126, 234, 1)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Formalizadas',
+                            data: topAgencias.map(([, stats]) => stats.formalizada),
+                            backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                            borderColor: 'rgba(40, 167, 69, 1)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Paradas > 3 dias',
+                            data: topAgencias.map(([, stats]) => stats.paradas),
+                            backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Distribuição de Status por Agência (Top 10)'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
         }
 
         function updateAgenciasChart(agenciasStats) {
