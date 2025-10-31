@@ -628,7 +628,7 @@ Exemplos de formatos aceitos:
             const files = fileInput.files;
 
             if (files.length === 0) {
-                showAlert('Por favor, selecione pelo menos um arquivo CSV', 'warning');
+                showAlert('Por favor, selecione pelo menos um arquivo CSV ou XLSX', 'warning');
                 return;
             }
 
@@ -641,6 +641,12 @@ Exemplos de formatos aceitos:
                 await processFile(file);
             }
 
+            if (filesData.length === 0) {
+                showAlert('Nenhum arquivo foi processado com sucesso. Verifique o formato dos arquivos.', 'warning');
+                document.getElementById('processBtn').disabled = false;
+                return;
+            }
+
             analyzeData();
             updateUI();
             
@@ -648,7 +654,13 @@ Exemplos de formatos aceitos:
             document.getElementById('mainContent').style.display = 'block';
             document.getElementById('processBtn').disabled = false;
             
-            showAlert(`${files.length} arquivo(s) processado(s) com sucesso!`, 'success');
+            const totalChanges = Object.values(statusHistory).reduce((sum, prop) => sum + Math.max(0, prop.changes.length - 1), 0);
+            
+            if (filesData.length === 1) {
+                showAlert(`✅ 1 arquivo processado com sucesso! Para detectar mudanças de status, faça upload de arquivos de datas diferentes.`, 'success');
+            } else {
+                showAlert(`✅ ${filesData.length} arquivos processados! ${totalChanges} mudança(s) de status detectada(s).`, 'success');
+            }
         }
 
         function processFile(file) {
@@ -780,47 +792,74 @@ Exemplos de formatos aceitos:
                 allData = allData.concat(file.data);
             });
 
-            // Analisar mudanças de status
+            // Construir histórico temporal real - comparando ENTRE arquivos
             statusHistory = {};
+            
+            // Para cada proposta, rastrear seu status em cada arquivo
+            const propByFile = {}; // propNum -> [{fileDate, status, fileIndex, fullData}]
             
             filesData.forEach((file, fileIndex) => {
                 file.data.forEach(row => {
                     const propNum = row['Nº Prop'];
-                    const situacao = row['Situação'];
-                    const pref = row['Pref'];
                     
-                    if (!statusHistory[propNum]) {
-                        statusHistory[propNum] = {
-                            changes: [],
-                            current: situacao,
-                            pref: pref,
-                            mci: row['MCI'],
-                            valor: row['Valor'],
-                            dtProp: row['Dt Prop']
-                        };
+                    if (!propByFile[propNum]) {
+                        propByFile[propNum] = [];
                     }
-
-                    // Verificar se houve mudança de status
-                    if (statusHistory[propNum].changes.length === 0) {
-                        statusHistory[propNum].changes.push({
-                            status: situacao,
-                            date: file.date,
-                            fileName: file.name
-                        });
-                    } else {
-                        const lastStatus = statusHistory[propNum].changes[statusHistory[propNum].changes.length - 1].status;
-                        if (lastStatus !== situacao) {
-                            statusHistory[propNum].changes.push({
-                                status: situacao,
-                                date: file.date,
-                                fileName: file.name,
-                                previousStatus: lastStatus
-                            });
-                        }
-                    }
-
-                    statusHistory[propNum].current = situacao;
+                    
+                    propByFile[propNum].push({
+                        fileDate: file.date,
+                        fileName: file.name,
+                        fileIndex: fileIndex,
+                        status: row['Situação'],
+                        pref: row['Pref'],
+                        mci: row['MCI'],
+                        valor: row['Valor'],
+                        dtProp: row['Dt Prop'],
+                        matriz: row['Matriz (atual)'],
+                        cart: row['Cart']
+                    });
                 });
+            });
+
+            // Agora construir o histórico de mudanças
+            Object.entries(propByFile).forEach(([propNum, occurrences]) => {
+                // Ordenar por data do arquivo
+                occurrences.sort((a, b) => a.fileDate - b.fileDate);
+                
+                const changes = [];
+                let lastStatus = null;
+                
+                occurrences.forEach((occ, idx) => {
+                    // Primeira ocorrência OU mudança de status
+                    if (lastStatus === null || lastStatus !== occ.status) {
+                        changes.push({
+                            status: occ.status,
+                            date: occ.fileDate,
+                            fileName: occ.fileName,
+                            previousStatus: lastStatus,
+                            fileIndex: occ.fileIndex
+                        });
+                        lastStatus = occ.status;
+                    }
+                    // Mesmo status - não adicionar mudança, mas registrar que ainda existe
+                });
+                
+                // Pegar dados mais recentes
+                const latest = occurrences[occurrences.length - 1];
+                
+                statusHistory[propNum] = {
+                    changes: changes,
+                    current: latest.status,
+                    pref: latest.pref,
+                    mci: latest.mci,
+                    valor: latest.valor,
+                    dtProp: latest.dtProp,
+                    matriz: latest.matriz,
+                    cart: latest.cart,
+                    firstSeen: occurrences[0].fileDate,
+                    lastSeen: latest.fileDate,
+                    allOccurrences: occurrences // Guardar todas as ocorrências
+                };
             });
 
             updateFilesList();
@@ -873,19 +912,33 @@ Exemplos de formatos aceitos:
             tbody.innerHTML = '';
 
             const mudancas = [];
+            
+            // Coletar apenas mudanças REAIS (onde previousStatus existe)
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 prop.changes.forEach((change, idx) => {
-                    if (change.previousStatus) {
+                    if (change.previousStatus) { // Só mudanças reais
                         mudancas.push({
                             propNum,
-                            ...prop,
-                            ...change
+                            pref: prop.pref,
+                            mci: prop.mci,
+                            valor: prop.valor,
+                            status: change.status,
+                            previousStatus: change.previousStatus,
+                            date: change.date,
+                            fileName: change.fileName
                         });
                     }
                 });
             });
 
+            // Ordenar por data (mais recente primeiro)
             mudancas.sort((a, b) => b.date - a.date);
+
+            if (mudancas.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📊 Nenhuma mudança de status detectada. Faça upload de múltiplos arquivos de datas diferentes para comparar.</td>';
+                return;
+            }
 
             mudancas.forEach(m => {
                 if (matchesFilter(m.pref, m.status)) {
@@ -897,7 +950,7 @@ Exemplos de formatos aceitos:
                         <td>${m.mci || '-'}</td>
                         <td><span class="badge badge-info">${m.previousStatus}</span></td>
                         <td><span class="badge badge-success">${m.status}</span></td>
-                        <td>${formatDate(m.date)}</td>
+                        <td>${formatDate(m.date)}<br><small style="color: #999;">${m.fileName}</small></td>
                         <td>${formatCurrency(m.valor)}</td>
                     `;
                 }
@@ -905,20 +958,34 @@ Exemplos de formatos aceitos:
         }
 
         function getParadasData() {
-            const today = new Date();
-            const threeDaysAgo = new Date(today.getTime() - (3 * 24 * 60 * 60 * 1000));
             const paradas = [];
+            const today = new Date();
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                const lastChange = prop.changes[prop.changes.length - 1];
-                const daysStopped = Math.floor((today - lastChange.date) / (1000 * 60 * 60 * 24));
-
-                if (daysStopped > 3) {
+                // Data da última mudança de status (não apenas última vez vista)
+                const lastChangeDate = prop.changes[prop.changes.length - 1].date;
+                
+                // Data da última vez que a proposta apareceu em um arquivo
+                const lastSeenDate = prop.lastSeen;
+                
+                // Calcular dias desde a última mudança
+                const daysSinceChange = Math.floor((today - lastChangeDate) / (1000 * 60 * 60 * 24));
+                
+                // Se a proposta não mudou de status e já faz mais de 3 dias
+                if (daysSinceChange > 3) {
+                    // Verificar quantas vezes apareceu sem mudar
+                    const timesSeenWithoutChange = prop.allOccurrences.filter(occ => 
+                        occ.fileDate > lastChangeDate
+                    ).length;
+                    
                     paradas.push({
                         propNum,
                         ...prop,
-                        lastChangeDate: lastChange.date,
-                        daysStopped
+                        lastChangeDate: lastChangeDate,
+                        lastSeenDate: lastSeenDate,
+                        daysStopped: daysSinceChange,
+                        filesWithoutChange: timesSeenWithoutChange,
+                        numChanges: prop.changes.length
                     });
                 }
             });
@@ -937,18 +1004,29 @@ Exemplos de formatos aceitos:
                 if (matchesFilter(p.pref, p.current)) {
                     const row = tbody.insertRow();
                     const badgeClass = p.daysStopped > 7 ? 'badge-danger' : 'badge-warning';
+                    
+                    // Informação adicional sobre mudanças
+                    const changeInfo = p.numChanges > 1 
+                        ? `${p.numChanges - 1} mudança(s) antes` 
+                        : 'Nunca mudou';
+                    
                     row.innerHTML = `
                         <td>${p.propNum}</td>
                         <td><strong>${getAgenciaNome(p.pref)}</strong></td>
                         <td>${p.pref || '-'}</td>
                         <td>${p.mci || '-'}</td>
                         <td><span class="badge badge-info">${p.current}</span></td>
-                        <td>${p.dtProp || '-'}</td>
-                        <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span></td>
+                        <td>${formatDate(p.lastChangeDate)}<br><small style="color: #999;">${changeInfo}</small></td>
+                        <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span><br><small style="color: #999;">Vista ${p.filesWithoutChange}x sem mudar</small></td>
                         <td>${formatCurrency(p.valor)}</td>
                     `;
                 }
             });
+
+            if (paradas.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #28a745;">🎉 Nenhuma proposta parada por mais de 3 dias!</td>';
+            }
         }
 
         function updateAgenciasAnalysis() {
@@ -1067,18 +1145,31 @@ Exemplos de formatos aceitos:
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 if (matchesFilter(prop.pref, prop.current)) {
                     const row = tbody.insertRow();
+                    
+                    // Montar histórico detalhado
                     const historicoHTML = prop.changes.map((c, idx) => {
-                        return `<div>${formatDate(c.date)}: ${c.status}</div>`;
+                        const arrow = idx > 0 ? '→ ' : '';
+                        const badge = c.previousStatus ? 'badge-success' : 'badge-info';
+                        return `<div style="margin: 3px 0;">
+                            <strong>${formatDate(c.date)}:</strong> 
+                            ${arrow}<span class="badge ${badge}" style="font-size: 0.8em;">${c.status}</span>
+                            <small style="color: #999;"> (${c.fileName})</small>
+                        </div>`;
                     }).join('');
+
+                    const totalChanges = prop.changes.length - 1; // Subtrair o estado inicial
+                    const changeLabel = totalChanges === 0 
+                        ? '<span style="color: #999;">Sem mudanças</span>' 
+                        : `<span style="color: #28a745; font-weight: bold;">${totalChanges} mudança(s)</span>`;
 
                     row.innerHTML = `
                         <td>${propNum}</td>
                         <td><strong>${getAgenciaNome(prop.pref)}</strong></td>
                         <td>${prop.pref || '-'}</td>
                         <td>${prop.mci || '-'}</td>
-                        <td><span class="badge badge-info">${prop.current}</span></td>
+                        <td><span class="badge badge-info">${prop.current}</span><br>${changeLabel}</td>
                         <td><div class="status-history">${historicoHTML}</div></td>
-                        <td>${prop.dtProp || '-'}</td>
+                        <td>${prop.dtProp || '-'}<br><small style="color: #999;">Primeira vista: ${formatDate(prop.firstSeen)}</small></td>
                         <td>${formatCurrency(prop.valor)}</td>
                     `;
                 }
