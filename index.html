@@ -1152,11 +1152,17 @@ Exemplos de formatos aceitos:
             // Ordenar arquivos por data
             filesData.sort((a, b) => a.date - b.date);
 
+            console.log('=== INICIANDO ANÁLISE ===');
+            console.log(`Total de arquivos: ${filesData.length}`);
+
             // Combinar todos os dados
             allData = [];
             filesData.forEach(file => {
+                console.log(`Arquivo: ${file.name}, Data: ${file.date}, Registros: ${file.data.length}`);
                 allData = allData.concat(file.data);
             });
+
+            console.log(`Total de registros combinados: ${allData.length}`);
 
             // Construir histórico temporal real - comparando ENTRE arquivos
             statusHistory = {};
@@ -1167,6 +1173,8 @@ Exemplos de formatos aceitos:
             filesData.forEach((file, fileIndex) => {
                 file.data.forEach(row => {
                     const propNum = row['Nº Prop'];
+                    
+                    if (!propNum) return; // Pular linhas sem número de proposta
                     
                     if (!propByFile[propNum]) {
                         propByFile[propNum] = [];
@@ -1187,17 +1195,40 @@ Exemplos de formatos aceitos:
                 });
             });
 
+            console.log(`Propostas únicas encontradas: ${Object.keys(propByFile).length}`);
+
             // Pegar propostas do arquivo mais recente
             const latestFile = filesData[filesData.length - 1];
-            const latestFilePropostas = new Set(latestFile.data.map(row => row['Nº Prop']));
+            console.log(`Arquivo mais recente: ${latestFile.name}`);
+            
+            const latestFilePropostas = new Set();
+            latestFile.data.forEach(row => {
+                const propNum = row['Nº Prop'];
+                if (propNum) {
+                    // Converter para string e remover espaços para garantir comparação correta
+                    latestFilePropostas.add(String(propNum).trim());
+                }
+            });
+
+            console.log(`Propostas no arquivo mais recente: ${latestFilePropostas.size}`);
+            console.log('Primeiras 10 propostas do arquivo mais recente:', Array.from(latestFilePropostas).slice(0, 10));
+
+            let removidas = 0;
+            let mantidas = 0;
 
             // Agora construir o histórico de mudanças
             Object.entries(propByFile).forEach(([propNum, occurrences]) => {
+                // Normalizar propNum para comparação
+                const propNumNormalized = String(propNum).trim();
+                
                 // REGRA: Se a proposta não existe na planilha mais recente, não incluir no histórico
-                if (!latestFilePropostas.has(propNum)) {
+                if (!latestFilePropostas.has(propNumNormalized)) {
                     console.log(`Proposta ${propNum} removida - não existe na planilha mais recente`);
+                    removidas++;
                     return; // Pular esta proposta
                 }
+
+                mantidas++;
 
                 // Ordenar por data do arquivo
                 occurrences.sort((a, b) => a.fileDate - b.fileDate);
@@ -1238,8 +1269,17 @@ Exemplos de formatos aceitos:
                 };
             });
 
+            console.log(`=== RESULTADO DA ANÁLISE ===`);
+            console.log(`Propostas mantidas: ${mantidas}`);
+            console.log(`Propostas removidas: ${removidas}`);
             console.log(`Total de propostas no histórico: ${Object.keys(statusHistory).length}`);
             console.log(`Propostas na planilha mais recente: ${latestFilePropostas.size}`);
+
+            if (Object.keys(statusHistory).length === 0) {
+                console.error('❌ ERRO: Nenhuma proposta no histórico! Verificar comparação de IDs.');
+                console.log('Exemplo de proposta do arquivo:', Object.keys(propByFile)[0]);
+                console.log('Exemplo de proposta do Set:', Array.from(latestFilePropostas)[0]);
+            }
 
             updateFilesList();
         }
