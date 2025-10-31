@@ -187,16 +187,37 @@
             padding: 15px;
             margin-bottom: 20px;
             border-radius: 5px;
+            animation: slideIn 0.3s ease-out;
+            transition: all 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
 
         .warning {
             background: #f8d7da;
             border-left-color: #dc3545;
+            color: #721c24;
         }
 
         .success {
             background: #d4edda;
             border-left-color: #28a745;
+            color: #155724;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-left-color: #17a2b8;
+            color: #0c5460;
         }
 
         .filter-section {
@@ -618,9 +639,27 @@ Exemplos de formatos aceitos:
             const container = document.getElementById('alertContainer');
             const alert = document.createElement('div');
             alert.className = `alert ${type}`;
-            alert.textContent = message;
+            
+            // Adicionar ícone baseado no tipo
+            const icons = {
+                success: '✅',
+                warning: '⚠️',
+                info: 'ℹ️',
+                danger: '❌'
+            };
+            
+            const icon = icons[type] || icons.info;
+            alert.innerHTML = `<strong>${icon}</strong> ${message}`;
+            
             container.appendChild(alert);
-            setTimeout(() => alert.remove(), 5000);
+            
+            // Auto-remover após 7 segundos (mais tempo para erros)
+            const timeout = type === 'warning' ? 10000 : 7000;
+            setTimeout(() => {
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateX(100%)';
+                setTimeout(() => alert.remove(), 300);
+            }, timeout);
         }
 
         async function processFiles() {
@@ -628,39 +667,61 @@ Exemplos de formatos aceitos:
             const files = fileInput.files;
 
             if (files.length === 0) {
-                showAlert('Por favor, selecione pelo menos um arquivo CSV ou XLSX', 'warning');
+                showAlert('❌ Por favor, selecione pelo menos um arquivo CSV ou XLSX', 'warning');
                 return;
             }
 
             document.getElementById('processBtn').disabled = true;
-            showAlert('Processando arquivos...', 'info');
+            showAlert('⏳ Processando arquivos...', 'info');
 
             filesData = [];
+            const results = [];
 
             for (let file of files) {
-                await processFile(file);
+                const result = await processFile(file);
+                results.push(result);
             }
 
+            // Contar sucessos e erros
+            const successCount = results.filter(r => r.success).length;
+            const errorCount = results.filter(r => !r.success).length;
+
             if (filesData.length === 0) {
-                showAlert('Nenhum arquivo foi processado com sucesso. Verifique o formato dos arquivos.', 'warning');
+                showAlert(`❌ Nenhum arquivo foi processado com sucesso. ${errorCount} arquivo(s) com erro. Verifique se os arquivos estão no formato correto e contêm a coluna "Nº Prop".`, 'warning');
                 document.getElementById('processBtn').disabled = false;
                 return;
             }
 
-            analyzeData();
-            updateUI();
-            
-            document.getElementById('statsSection').style.display = 'block';
-            document.getElementById('mainContent').style.display = 'block';
-            document.getElementById('processBtn').disabled = false;
-            
-            const totalChanges = Object.values(statusHistory).reduce((sum, prop) => sum + Math.max(0, prop.changes.length - 1), 0);
-            
-            if (filesData.length === 1) {
-                showAlert(`✅ 1 arquivo processado com sucesso! Para detectar mudanças de status, faça upload de arquivos de datas diferentes.`, 'success');
-            } else {
-                showAlert(`✅ ${filesData.length} arquivos processados! ${totalChanges} mudança(s) de status detectada(s).`, 'success');
+            try {
+                analyzeData();
+                updateUI();
+                
+                document.getElementById('statsSection').style.display = 'block';
+                document.getElementById('mainContent').style.display = 'block';
+                
+                const totalChanges = Object.values(statusHistory).reduce((sum, prop) => sum + Math.max(0, prop.changes.length - 1), 0);
+                
+                // Mensagem de sucesso com detalhes
+                let message = '';
+                if (errorCount > 0) {
+                    message = `⚠️ ${successCount} arquivo(s) processado(s) com sucesso, ${errorCount} com erro. `;
+                } else {
+                    message = `✅ ${successCount} arquivo(s) processado(s) com sucesso! `;
+                }
+                
+                if (filesData.length === 1) {
+                    message += 'Para detectar mudanças de status, faça upload de arquivos de datas diferentes.';
+                    showAlert(message, errorCount > 0 ? 'warning' : 'success');
+                } else {
+                    message += `${totalChanges} mudança(s) de status detectada(s).`;
+                    showAlert(message, errorCount > 0 ? 'warning' : 'success');
+                }
+            } catch (error) {
+                console.error('Erro ao analisar dados:', error);
+                showAlert(`❌ Erro ao analisar os dados: ${error.message}. Por favor, verifique se os arquivos estão no formato correto.`, 'warning');
             }
+            
+            document.getElementById('processBtn').disabled = false;
         }
 
         function processFile(file) {
@@ -674,25 +735,43 @@ Exemplos de formatos aceitos:
                         header: true,
                         skipEmptyLines: true,
                         complete: function(results) {
-                            const data = results.data.filter(row => row['Nº Prop'] && row['Nº Prop'] !== 'Nº Prop');
-                            
-                            data.forEach(row => {
-                                row._fileDate = fileDate;
-                                row._fileName = file.name;
-                            });
+                            try {
+                                if (!results.data || results.data.length === 0) {
+                                    showAlert(`❌ Erro: Arquivo ${file.name} está vazio ou não pôde ser lido`, 'warning');
+                                    resolve({ success: false, fileName: file.name });
+                                    return;
+                                }
 
-                            filesData.push({
-                                name: file.name,
-                                date: fileDate,
-                                data: data
-                            });
+                                const data = results.data.filter(row => row['Nº Prop'] && row['Nº Prop'] !== 'Nº Prop');
+                                
+                                if (data.length === 0) {
+                                    showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop" ou não tem dados válidos`, 'warning');
+                                    resolve({ success: false, fileName: file.name });
+                                    return;
+                                }
 
-                            resolve();
+                                data.forEach(row => {
+                                    row._fileDate = fileDate;
+                                    row._fileName = file.name;
+                                });
+
+                                filesData.push({
+                                    name: file.name,
+                                    date: fileDate,
+                                    data: data
+                                });
+
+                                resolve({ success: true, fileName: file.name, count: data.length });
+                            } catch (error) {
+                                console.error('Erro ao processar arquivo CSV:', error);
+                                showAlert(`❌ Erro ao processar ${file.name}: ${error.message}`, 'warning');
+                                resolve({ success: false, fileName: file.name, error: error.message });
+                            }
                         },
                         error: function(error) {
-                            console.error('Erro ao processar arquivo CSV:', error);
-                            showAlert(`Erro ao processar ${file.name}`, 'warning');
-                            resolve();
+                            console.error('Erro ao fazer parse do CSV:', error);
+                            showAlert(`❌ Erro ao ler arquivo CSV ${file.name}: ${error.message}`, 'warning');
+                            resolve({ success: false, fileName: file.name, error: error.message });
                         }
                     });
                 } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
@@ -704,6 +783,12 @@ Exemplos de formatos aceitos:
                             const data = new Uint8Array(e.target.result);
                             const workbook = XLSX.read(data, { type: 'array' });
                             
+                            if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                                showAlert(`❌ Erro: Arquivo ${file.name} não contém planilhas`, 'warning');
+                                resolve({ success: false, fileName: file.name });
+                                return;
+                            }
+
                             // Pegar a primeira planilha
                             const firstSheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheetName];
@@ -711,6 +796,12 @@ Exemplos de formatos aceitos:
                             // Converter para JSON
                             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                             
+                            if (!jsonData || jsonData.length === 0) {
+                                showAlert(`❌ Erro: Arquivo ${file.name} - planilha vazia`, 'warning');
+                                resolve({ success: false, fileName: file.name });
+                                return;
+                            }
+
                             // Encontrar a linha de cabeçalho (procurar por "Nº Prop")
                             let headerRowIndex = -1;
                             let headers = [];
@@ -725,8 +816,8 @@ Exemplos de formatos aceitos:
                             }
                             
                             if (headerRowIndex === -1) {
-                                showAlert(`Arquivo ${file.name}: Cabeçalho "Nº Prop" não encontrado`, 'warning');
-                                resolve();
+                                showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop". Verifique se é a planilha correta.`, 'warning');
+                                resolve({ success: false, fileName: file.name });
                                 return;
                             }
                             
@@ -757,27 +848,28 @@ Exemplos de formatos aceitos:
                                     date: fileDate,
                                     data: processedData
                                 });
+                                resolve({ success: true, fileName: file.name, count: processedData.length });
                             } else {
-                                showAlert(`Arquivo ${file.name}: Nenhum dado válido encontrado`, 'warning');
+                                showAlert(`❌ Erro: Arquivo ${file.name} não possui dados válidos após o cabeçalho`, 'warning');
+                                resolve({ success: false, fileName: file.name });
                             }
-                            
-                            resolve();
                         } catch (error) {
                             console.error('Erro ao processar arquivo Excel:', error);
-                            showAlert(`Erro ao processar ${file.name}: ${error.message}`, 'warning');
-                            resolve();
+                            showAlert(`❌ Erro ao processar ${file.name}: ${error.message}`, 'warning');
+                            resolve({ success: false, fileName: file.name, error: error.message });
                         }
                     };
                     
-                    reader.onerror = function() {
-                        showAlert(`Erro ao ler arquivo ${file.name}`, 'warning');
-                        resolve();
+                    reader.onerror = function(error) {
+                        console.error('Erro ao ler arquivo:', error);
+                        showAlert(`❌ Erro ao ler arquivo ${file.name}. O arquivo pode estar corrompido ou em uso.`, 'warning');
+                        resolve({ success: false, fileName: file.name, error: 'Erro ao ler arquivo' });
                     };
                     
                     reader.readAsArrayBuffer(file);
                 } else {
-                    showAlert(`Formato não suportado: ${file.name}`, 'warning');
-                    resolve();
+                    showAlert(`❌ Formato não suportado: ${file.name}. Use apenas arquivos .csv, .xlsx ou .xls`, 'warning');
+                    resolve({ success: false, fileName: file.name, error: 'Formato não suportado' });
                 }
             });
         }
