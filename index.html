@@ -6,7 +6,8 @@
     <title>Monitor de Propostas - BB Regulariza</title>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Tentar carregar XLSX local primeiro, depois CDN como fallback -->
+    <script src="xlsx.full.min.js" onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'"></script>
     <style>
         * {
             margin: 0;
@@ -92,6 +93,30 @@
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
+        }
+
+        .clear-btn {
+            background: #dc3545;
+            margin-left: 10px;
+        }
+
+        .clear-btn:hover {
+            background: #c82333;
+        }
+
+        .save-mapping-btn {
+            background: #17a2b8;
+            margin-left: 10px;
+        }
+
+        .save-mapping-btn:hover {
+            background: #138496;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         .stats-grid {
@@ -396,7 +421,10 @@
             <div class="upload-area">
                 <h3>📁 Upload de Planilhas</h3>
                 <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" multiple>
-                <button id="processBtn" onclick="processFiles()">Processar Arquivos</button>
+                <div class="button-group">
+                    <button id="processBtn" onclick="processFiles()">Processar Arquivos</button>
+                    <button class="clear-btn" onclick="limparTudo()">🗑️ Limpar Tudo</button>
+                </div>
                 <div id="filesList" class="files-list" style="display: none;"></div>
             </div>
         </div>
@@ -416,7 +444,11 @@ Exemplos de formatos aceitos:
 227, Agência Salvador Centro
 230; Agência Feira de Santana
 231	Agência Vitória da Conquista"></textarea>
-            <button onclick="processAgenciaMapping()" style="margin-top: 10px;">Processar Mapeamento</button>
+            <div class="button-group" style="margin-top: 10px;">
+                <button onclick="processAgenciaMapping()">Processar Mapeamento</button>
+                <button class="save-mapping-btn" onclick="salvarMapeamento()">💾 Salvar Mapeamento</button>
+                <button class="clear-btn" onclick="limparMapeamento()">🗑️ Limpar Mapeamento</button>
+            </div>
             <div id="mappingStats" class="mapping-stats" style="display: none;"></div>
         </div>
 
@@ -635,6 +667,125 @@ Exemplos de formatos aceitos:
             return agenciaMap[prefixo] || `Pref ${prefixo}`;
         }
 
+        function limparTudo() {
+            if (!confirm('⚠️ Tem certeza que deseja limpar TODOS os dados processados? Esta ação não pode ser desfeita.')) {
+                return;
+            }
+
+            // Limpar dados
+            allData = [];
+            filesData = [];
+            statusHistory = {};
+            currentFilter = { agencia: '', situacao: '' };
+
+            // Limpar input de arquivo
+            document.getElementById('fileInput').value = '';
+
+            // Esconder seções
+            document.getElementById('statsSection').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('filesList').style.display = 'none';
+
+            // Limpar gráfico se existir
+            if (window.agenciasChart) {
+                window.agenciasChart.destroy();
+            }
+
+            showAlert('🗑️ Todos os dados foram limpos!', 'success');
+        }
+
+        function salvarMapeamento() {
+            if (Object.keys(agenciaMap).length === 0) {
+                showAlert('⚠️ Nenhum mapeamento de agências para salvar. Processe o mapeamento primeiro.', 'warning');
+                return;
+            }
+
+            // Converter mapeamento para CSV
+            let csvContent = 'Prefixo,Nome da Agência\n';
+            Object.entries(agenciaMap)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .forEach(([prefixo, nome]) => {
+                    csvContent += `${prefixo},"${nome}"\n`;
+                });
+
+            // Salvar também em localStorage para recuperar depois
+            try {
+                localStorage.setItem('agenciaMapping', JSON.stringify(agenciaMap));
+                localStorage.setItem('agenciaMappingText', document.getElementById('agenciaMapping').value);
+            } catch (e) {
+                console.log('LocalStorage não disponível:', e);
+            }
+
+            // Download do CSV
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `mapeamento_agencias_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showAlert(`💾 Mapeamento de ${Object.keys(agenciaMap).length} agência(s) salvo com sucesso!`, 'success');
+        }
+
+        function limparMapeamento() {
+            if (!confirm('⚠️ Tem certeza que deseja limpar o mapeamento de agências?')) {
+                return;
+            }
+
+            agenciaMap = {};
+            document.getElementById('agenciaMapping').value = '';
+            document.getElementById('mappingStats').style.display = 'none';
+
+            // Limpar do localStorage
+            try {
+                localStorage.removeItem('agenciaMapping');
+                localStorage.removeItem('agenciaMappingText');
+            } catch (e) {
+                console.log('LocalStorage não disponível:', e);
+            }
+
+            // Se houver dados processados, atualizar interface
+            if (allData.length > 0) {
+                updateUI();
+            }
+
+            showAlert('🗑️ Mapeamento de agências limpo!', 'success');
+        }
+
+        function carregarMapeamentoSalvo() {
+            try {
+                const savedMapping = localStorage.getItem('agenciaMapping');
+                const savedText = localStorage.getItem('agenciaMappingText');
+                
+                if (savedMapping) {
+                    agenciaMap = JSON.parse(savedMapping);
+                    if (savedText) {
+                        document.getElementById('agenciaMapping').value = savedText;
+                    }
+                    
+                    if (Object.keys(agenciaMap).length > 0) {
+                        const statsDiv = document.getElementById('mappingStats');
+                        statsDiv.style.display = 'flex';
+                        statsDiv.innerHTML = `
+                            <div class="mapping-stat">
+                                <strong>${Object.keys(agenciaMap).length}</strong> agências mapeadas (carregadas automaticamente)
+                            </div>
+                        `;
+                        showAlert(`📋 Mapeamento anterior de ${Object.keys(agenciaMap).length} agência(s) carregado!`, 'info');
+                    }
+                }
+            } catch (e) {
+                console.log('Erro ao carregar mapeamento:', e);
+            }
+        }
+
+        // Carregar mapeamento salvo ao iniciar a página
+        window.addEventListener('load', carregarMapeamentoSalvo);
+
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alertContainer');
             const alert = document.createElement('div');
@@ -780,8 +931,11 @@ Exemplos de formatos aceitos:
                     
                     reader.onload = function(e) {
                         try {
+                            console.log(`Processando XLSX: ${file.name}`);
                             const data = new Uint8Array(e.target.result);
                             const workbook = XLSX.read(data, { type: 'array' });
+                            
+                            console.log(`Planilhas encontradas: ${workbook.SheetNames.join(', ')}`);
                             
                             if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
                                 showAlert(`❌ Erro: Arquivo ${file.name} não contém planilhas`, 'warning');
@@ -793,8 +947,12 @@ Exemplos de formatos aceitos:
                             const firstSheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheetName];
                             
+                            console.log(`Lendo planilha: ${firstSheetName}`);
+                            
                             // Converter para JSON
-                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                            
+                            console.log(`Total de linhas lidas: ${jsonData.length}`);
                             
                             if (!jsonData || jsonData.length === 0) {
                                 showAlert(`❌ Erro: Arquivo ${file.name} - planilha vazia`, 'warning');
@@ -806,16 +964,19 @@ Exemplos de formatos aceitos:
                             let headerRowIndex = -1;
                             let headers = [];
                             
-                            for (let i = 0; i < jsonData.length; i++) {
+                            for (let i = 0; i < Math.min(20, jsonData.length); i++) { // Procurar nas primeiras 20 linhas
                                 const row = jsonData[i];
-                                if (row.includes('Nº Prop')) {
+                                if (Array.isArray(row) && row.some(cell => cell && cell.toString().includes('Nº Prop'))) {
                                     headerRowIndex = i;
                                     headers = row;
+                                    console.log(`Cabeçalho encontrado na linha ${i}`);
+                                    console.log(`Colunas: ${headers.join(', ')}`);
                                     break;
                                 }
                             }
                             
                             if (headerRowIndex === -1) {
+                                console.error('Cabeçalho "Nº Prop" não encontrado');
                                 showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop". Verifique se é a planilha correta.`, 'warning');
                                 resolve({ success: false, fileName: file.name });
                                 return;
@@ -830,12 +991,29 @@ Exemplos de formatos aceitos:
                                 const rowObj = {};
                                 headers.forEach((header, idx) => {
                                     if (header) {
-                                        rowObj[header] = row[idx] !== undefined ? row[idx] : '';
+                                        let cellValue = row[idx];
+                                        
+                                        // Tratar valores especiais
+                                        if (cellValue === undefined || cellValue === null) {
+                                            cellValue = '';
+                                        }
+                                        
+                                        // Se for uma data do Excel, converter
+                                        if (typeof cellValue === 'number' && (header.includes('Dt') || header.includes('Data'))) {
+                                            try {
+                                                const date = XLSX.SSF.parse_date_code(cellValue);
+                                                cellValue = `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+                                            } catch (e) {
+                                                // Manter valor original se não conseguir converter
+                                            }
+                                        }
+                                        
+                                        rowObj[header] = cellValue;
                                     }
                                 });
                                 
                                 // Verificar se tem Nº Prop válido
-                                if (rowObj['Nº Prop'] && rowObj['Nº Prop'] !== 'Nº Prop') {
+                                if (rowObj['Nº Prop'] && rowObj['Nº Prop'] !== 'Nº Prop' && rowObj['Nº Prop'] !== '') {
                                     rowObj._fileDate = fileDate;
                                     rowObj._fileName = file.name;
                                     processedData.push(rowObj);
@@ -843,6 +1021,8 @@ Exemplos de formatos aceitos:
                             }
                             
                             if (processedData.length > 0) {
+                                console.log(`${processedData.length} linhas válidas processadas`);
+                                console.log('Exemplo de primeira linha:', processedData[0]);
                                 filesData.push({
                                     name: file.name,
                                     date: fileDate,
@@ -850,6 +1030,7 @@ Exemplos de formatos aceitos:
                                 });
                                 resolve({ success: true, fileName: file.name, count: processedData.length });
                             } else {
+                                console.error('Nenhum dado válido após processar');
                                 showAlert(`❌ Erro: Arquivo ${file.name} não possui dados válidos após o cabeçalho`, 'warning');
                                 resolve({ success: false, fileName: file.name });
                             }
@@ -1138,7 +1319,18 @@ Exemplos de formatos aceitos:
                 }
 
                 agenciasStats[pref].total++;
-                agenciasStats[pref].valorTotal += parseFloat(prop.valor?.replace(',', '.') || 0);
+                
+                // Tratar valor de forma segura
+                let valorNum = 0;
+                if (prop.valor) {
+                    if (typeof prop.valor === 'number') {
+                        valorNum = prop.valor;
+                    } else if (typeof prop.valor === 'string') {
+                        const cleanValue = prop.valor.replace('R$', '').trim().replace(',', '.');
+                        valorNum = parseFloat(cleanValue) || 0;
+                    }
+                }
+                agenciasStats[pref].valorTotal += valorNum;
 
                 if (prop.current && prop.current.includes('ANALISADA')) {
                     agenciasStats[pref].emAnalise++;
@@ -1352,11 +1544,32 @@ Exemplos de formatos aceitos:
 
         function formatCurrency(value) {
             if (!value) return 'R$ 0,00';
-            const num = parseFloat(value.toString().replace(',', '.'));
-            return new Intl.NumberFormat('pt-BR', { 
-                style: 'currency', 
-                currency: 'BRL' 
-            }).format(num);
+            
+            // Se já for número, usar direto
+            if (typeof value === 'number') {
+                return new Intl.NumberFormat('pt-BR', { 
+                    style: 'currency', 
+                    currency: 'BRL' 
+                }).format(value);
+            }
+            
+            // Se for string, tentar converter
+            if (typeof value === 'string') {
+                // Remover R$ e espaços se tiver
+                let cleanValue = value.replace('R$', '').trim();
+                // Trocar vírgula por ponto se necessário
+                cleanValue = cleanValue.replace(',', '.');
+                const num = parseFloat(cleanValue);
+                
+                if (isNaN(num)) return 'R$ 0,00';
+                
+                return new Intl.NumberFormat('pt-BR', { 
+                    style: 'currency', 
+                    currency: 'BRL' 
+                }).format(num);
+            }
+            
+            return 'R$ 0,00';
         }
     </script>
 </body>
